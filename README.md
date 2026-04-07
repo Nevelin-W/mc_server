@@ -207,6 +207,7 @@ The restore script automatically:
 
 | Secret | Description |
 |--------|-------------|
+| `TF_API_TOKEN` | Terraform Cloud API token ([create here](https://app.terraform.io/app/settings/tokens)) |
 | `VULTR_API_KEY` | Vultr API key *(if using Vultr)* |
 | `HETZNER_API_TOKEN` | Hetzner Cloud API token *(if using Hetzner)* |
 | `HETZNER_DNS_TOKEN` | *(optional)* Hetzner DNS token (omit if same account) |

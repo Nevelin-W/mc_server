@@ -5,14 +5,14 @@
 # Uncomment ONE of the blocks below.
 
 # ── Option 1: Terraform Cloud ────────────────
-# terraform {
-#   cloud {
-#     organization = "YOUR_ORG"
-#     workspaces {
-#       name = "mc-server"
-#     }
-#   }
-# }
+terraform {
+  cloud {
+    organization = "applications"
+    workspaces {
+      name = "mc_server"
+    }
+  }
+}
 
 # ── Option 2: S3-compatible (Hetzner Object Storage) ──
 # terraform {

@@ -56,6 +56,7 @@ jobs:
         with:
           terraform_version: "1.7.x"
           terraform_wrapper: false
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Terraform Init
         working-directory: terraform
@@ -210,6 +211,7 @@ jobs:
         with:
           terraform_version: "1.7.x"
           terraform_wrapper: false
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Terraform Init
         working-directory: terraform
@@ -273,6 +275,7 @@ jobs:
         with:
           terraform_version: "1.7.x"
           terraform_wrapper: false
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Terraform Init
         working-directory: terraform
@@ -362,6 +365,7 @@ jobs:
         with:
           terraform_version: "1.7.x"
           terraform_wrapper: false
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
 
       - name: Terraform Init
         working-directory: terraform
