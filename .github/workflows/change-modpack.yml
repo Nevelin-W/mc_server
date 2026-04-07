@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Validate modpack exists in catalog
         run: |
@@ -82,7 +82,7 @@ jobs:
           ${SSH} "rm -rf /opt/minecraft/server/mods /opt/minecraft/server/config /opt/minecraft/server/libraries /opt/minecraft/server/forge-*.jar /opt/minecraft/server/fabric-*.jar /opt/minecraft/modpack-staging/*"
 
       - name: Setup Python & Ansible
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 

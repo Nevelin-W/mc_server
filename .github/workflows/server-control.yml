@@ -49,10 +49,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.7.x"
           terraform_wrapper: false
@@ -106,7 +106,7 @@ jobs:
             "cloud-init status --wait" 2>/dev/null || true
 
       - name: Setup Python & Ansible
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -165,7 +165,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup SSH
         run: |
@@ -207,7 +207,7 @@ jobs:
           " || echo "Warning: Could not gracefully stop (server may already be down)"
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.7.x"
           terraform_wrapper: false
@@ -250,7 +250,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup SSH + backup before restart
         run: |
@@ -271,7 +271,7 @@ jobs:
           fi
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.7.x"
           terraform_wrapper: false
@@ -324,7 +324,7 @@ jobs:
           ssh -i ~/.ssh/mc_server -o StrictHostKeyChecking=no root@${{ steps.ip.outputs.ip }} "cloud-init status --wait" 2>/dev/null || true
 
       - name: Setup Python & Ansible
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -358,10 +358,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: "1.7.x"
           terraform_wrapper: false
