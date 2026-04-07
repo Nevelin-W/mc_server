@@ -1,0 +1,69 @@
+# ── Example values — copy to terraform.tfvars ─
+# NEVER commit terraform.tfvars to git
+
+# ══════════════════════════════════════════════
+# Provider Selection
+# ══════════════════════════════════════════════
+cloud_provider = "vultr"              # "hetzner" | "vultr" (future: "aws" | "oci")
+
+# ══════════════════════════════════════════════
+# Common Settings (all providers)
+# ══════════════════════════════════════════════
+ssh_public_key = "ssh-ed25519 AAAA... you@machine"
+project_name   = "mc-server"
+server_enabled = true                 # false = destroy VM (stop), true = create VM (start)
+volume_size_gb = 50
+
+server_plan = ""                      # Leave empty for smart default per provider:
+                                      #   hetzner → ccx33 (8 dedicated vCPU, 32GB)
+                                      #   vultr   → vhp-4c-12gb-amd (4 vCPU, 12GB)
+                                      #   aws     → c6i.2xlarge (8 vCPU, 16GB)
+                                      #   oci     → VM.Standard.A1.Flex (4 OCPU, 24GB ARM)
+
+region = ""                           # Leave empty for closest-to-Riga default:
+                                      #   hetzner → hel1 (Helsinki)
+                                      #   vultr   → sto (Stockholm)
+                                      #   aws     → eu-north-1 (Stockholm)
+                                      #   oci     → eu-amsterdam-1
+
+admin_ips = [
+  "YOUR.IP.HERE/32"                   # Restrict SSH + RCON to your IP
+]
+
+# ══════════════════════════════════════════════
+# Provider API Tokens (only your chosen provider is required)
+# ══════════════════════════════════════════════
+
+# ── Vultr ────────────────────────────────────
+vultr_api_key = "your-vultr-api-key"
+
+# ── Hetzner (if using hetzner) ───────────────
+# hcloud_token      = "your-hetzner-api-token"
+# hetzner_dns_token = ""              # Leave empty if same Hetzner account as Cloud
+
+# ── AWS (future) ─────────────────────────────
+# aws_access_key = ""
+# aws_secret_key = ""
+
+# ── OCI (future) ─────────────────────────────
+# oci_tenancy_ocid = ""
+# oci_user_ocid    = ""
+
+# ══════════════════════════════════════════════
+# DNS (optional – works with all providers)
+# ══════════════════════════════════════════════
+# Set a domain so players connect to mc.example.com instead of an IP.
+# The DNS A record auto-updates every time the VM is created.
+# Leave empty to skip DNS entirely.
+domain_name      = ""                 # e.g., "example.com"
+domain_subdomain = "mc"               # e.g., "mc" → mc.example.com, or "@" for root
+
+# ══════════════════════════════════════════════
+# Backup Storage – Cloudflare R2 (recommended)
+# ══════════════════════════════════════════════
+# R2 is S3-compatible with zero egress fees. ~$0.015/GB/mo.
+# Setup: Cloudflare dashboard → R2 → Create bucket → Create API token
+#
+# Any S3-compatible backend works (AWS S3, Backblaze B2, etc.)
+backup_s3_endpoint = ""               # R2: "https://<ACCOUNT_ID>.r2.cloudflarestorage.com"
+backup_s3_bucket   = "mc-server-backups"

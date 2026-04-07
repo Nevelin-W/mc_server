@@ -1,0 +1,50 @@
+---
+# ── Fabric modpack installation ──────────────
+
+- name: Create modpack download directory
+  file:
+    path: "{{ minecraft_home }}/modpack-staging"
+    state: directory
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0755"
+
+- name: Download Fabric server launcher
+  get_url:
+    url: "https://meta.fabricmc.net/v2/versions/loader/{{ modpack_minecraft_version }}/{{ modpack_loader_version }}/1.0.1/server/jar"
+    dest: "{{ minecraft_home }}/server/fabric-server-launch.jar"
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0644"
+  when: modpack_loader_version | length > 0
+
+- name: Download modpack server files
+  get_url:
+    url: "{{ modpack_download_url }}"
+    dest: "{{ minecraft_home }}/modpack-staging/server-pack.zip"
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0644"
+  when: modpack_download_url | length > 0
+
+- name: Extract server pack
+  unarchive:
+    src: "{{ minecraft_home }}/modpack-staging/server-pack.zip"
+    dest: "{{ minecraft_home }}/server/"
+    remote_src: true
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+  when: modpack_download_url | length > 0
+
+- name: Record installed modpack version
+  copy:
+    dest: "{{ minecraft_home }}/server/.modpack-version"
+    content: |
+      modpack={{ modpack_name }}
+      loader={{ modpack_loader }}
+      minecraft_version={{ modpack_minecraft_version }}
+      loader_version={{ modpack_loader_version }}
+      installed_at={{ ansible_date_time.iso8601 }}
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0644"

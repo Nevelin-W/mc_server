@@ -1,0 +1,59 @@
+---
+# ── Quilt modpack installation ───────────────
+
+- name: Create modpack download directory
+  file:
+    path: "{{ minecraft_home }}/modpack-staging"
+    state: directory
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0755"
+
+- name: Download Quilt server launcher
+  get_url:
+    url: "https://quiltmc.org/api/v1/download-latest-installer/java-universal"
+    dest: "{{ minecraft_home }}/modpack-staging/quilt-installer.jar"
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0644"
+
+- name: Run Quilt installer
+  become_user: "{{ minecraft_user }}"
+  command: >
+    java -jar {{ minecraft_home }}/modpack-staging/quilt-installer.jar
+    install server {{ modpack_minecraft_version }}
+    --download-server
+  args:
+    chdir: "{{ minecraft_home }}/server"
+    creates: "{{ minecraft_home }}/server/quilt-server-launch.jar"
+
+- name: Download modpack server files
+  get_url:
+    url: "{{ modpack_download_url }}"
+    dest: "{{ minecraft_home }}/modpack-staging/server-pack.zip"
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0644"
+  when: modpack_download_url | length > 0
+
+- name: Extract server pack
+  unarchive:
+    src: "{{ minecraft_home }}/modpack-staging/server-pack.zip"
+    dest: "{{ minecraft_home }}/server/"
+    remote_src: true
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+  when: modpack_download_url | length > 0
+
+- name: Record installed modpack version
+  copy:
+    dest: "{{ minecraft_home }}/server/.modpack-version"
+    content: |
+      modpack={{ modpack_name }}
+      loader={{ modpack_loader }}
+      minecraft_version={{ modpack_minecraft_version }}
+      loader_version={{ modpack_loader_version }}
+      installed_at={{ ansible_date_time.iso8601 }}
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0644"

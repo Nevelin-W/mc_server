@@ -1,0 +1,27 @@
+---
+# ── Eclipse Temurin JDK ──────────────────────
+- name: Add Adoptium GPG key
+  apt_key:
+    url: https://packages.adoptium.net/artifactory/api/gpg/key/public
+    state: present
+
+- name: Add Adoptium repository
+  apt_repository:
+    repo: "deb https://packages.adoptium.net/artifactory/deb {{ ansible_distribution_release }} main"
+    state: present
+    filename: adoptium
+
+- name: Install Eclipse Temurin JDK {{ java_version }}
+  apt:
+    name: "{{ java_package }}"
+    state: present
+    update_cache: true
+
+- name: Verify Java installation
+  command: java -version
+  register: java_check
+  changed_when: false
+
+- name: Display Java version
+  debug:
+    msg: "{{ java_check.stderr_lines[0] }}"

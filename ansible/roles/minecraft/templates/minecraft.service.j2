@@ -1,0 +1,50 @@
+[Unit]
+Description=Minecraft Server ({{ modpack_name }})
+Documentation=https://github.com/YOUR_USER/mc_server
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ minecraft_user }}
+Group={{ minecraft_group }}
+WorkingDirectory={{ minecraft_home }}/server
+
+# Start
+ExecStart=/bin/bash {{ minecraft_home }}/server/start.sh
+
+# Graceful stop via RCON
+ExecStop={{ minecraft_home }}/tools/mcrcon -H 127.0.0.1 -P {{ rcon_port }} -p '{{ rcon_password }}' 'say Server shutting down in 10 seconds...'
+ExecStop=/bin/sleep 10
+ExecStop={{ minecraft_home }}/tools/mcrcon -H 127.0.0.1 -P {{ rcon_port }} -p '{{ rcon_password }}' 'save-all'
+ExecStop=/bin/sleep 3
+ExecStop={{ minecraft_home }}/tools/mcrcon -H 127.0.0.1 -P {{ rcon_port }} -p '{{ rcon_password }}' 'stop'
+
+# Auto-restart on crash
+{% if auto_restart_enabled %}
+Restart=on-failure
+RestartSec={{ auto_restart_delay_sec }}
+StartLimitIntervalSec=600
+StartLimitBurst={{ auto_restart_max_retries }}
+{% endif %}
+
+# Resource limits
+LimitNOFILE=65535
+LimitNPROC=65535
+
+# Security hardening
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths={{ minecraft_home }}/server {{ data_volume_mount }} {{ minecraft_home }}/logs {{ minecraft_home }}/backups
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Logging
+StandardOutput=append:{{ minecraft_home }}/logs/server.log
+StandardError=append:{{ minecraft_home }}/logs/server.log
+
+# Environment
+Environment="JAVA_HOME=/usr/lib/jvm/temurin-{{ java_version }}-jdk-amd64"
+
+[Install]
+WantedBy=multi-user.target

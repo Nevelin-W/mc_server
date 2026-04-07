@@ -1,0 +1,119 @@
+---
+# ── Base OS configuration ────────────────────
+- name: Set timezone
+  timezone:
+    name: Europe/Riga
+
+- name: Update apt cache
+  apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install base packages
+  apt:
+    name:
+      - htop
+      - iotop
+      - wget
+      - curl
+      - unzip
+      - jq
+      - tmux
+      - fail2ban
+      - ufw
+      - rsync
+      - pigz
+      - moreutils  # for ts (timestamp) in logs
+    state: present
+
+- name: Create minecraft system group
+  group:
+    name: "{{ minecraft_group }}"
+    system: true
+
+- name: Create minecraft system user
+  user:
+    name: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    home: "{{ minecraft_home }}"
+    shell: /bin/bash
+    system: true
+    create_home: true
+
+- name: Ensure data volume mount point exists
+  file:
+    path: "{{ data_volume_mount }}"
+    state: directory
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0755"
+
+- name: Mount data volume (if not already in fstab)
+  mount:
+    path: "{{ data_volume_mount }}"
+    src: "LABEL=minecraft-data"
+    fstype: ext4
+    opts: defaults,nofail,discard
+    state: mounted
+  ignore_errors: true  # Volume may use device path instead
+
+- name: Set ownership on data volume
+  file:
+    path: "{{ data_volume_mount }}"
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    recurse: true
+
+# ── Performance tuning ───────────────────────
+- name: Configure sysctl for game server
+  sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_set: true
+    reload: true
+  loop:
+    - { key: "vm.swappiness", value: "10" }
+    - { key: "net.core.rmem_max", value: "16777216" }
+    - { key: "net.core.wmem_max", value: "16777216" }
+    - { key: "net.ipv4.tcp_rmem", value: "4096 87380 16777216" }
+    - { key: "net.ipv4.tcp_wmem", value: "4096 65536 16777216" }
+
+- name: Configure swapfile (4GB)
+  block:
+    - name: Create swapfile
+      command: fallocate -l 4G /swapfile
+      args:
+        creates: /swapfile
+
+    - name: Set swap permissions
+      file:
+        path: /swapfile
+        mode: "0600"
+
+    - name: Format swap
+      command: mkswap /swapfile
+      args:
+        creates: /swapfile
+      changed_when: false
+
+    - name: Enable swap
+      command: swapon /swapfile
+      changed_when: false
+      failed_when: false
+
+    - name: Add swap to fstab
+      lineinfile:
+        path: /etc/fstab
+        line: "/swapfile none swap sw 0 0"
+        create: true
+
+# ── Security ─────────────────────────────────
+- name: Configure ulimits for minecraft user
+  copy:
+    dest: /etc/security/limits.d/minecraft.conf
+    content: |
+      {{ minecraft_user }} soft nofile 65535
+      {{ minecraft_user }} hard nofile 65535
+      {{ minecraft_user }} soft nproc 65535
+      {{ minecraft_user }} hard nproc 65535
+    mode: "0644"

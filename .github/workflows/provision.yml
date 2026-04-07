@@ -1,0 +1,119 @@
+# ══════════════════════════════════════════════
+# Provision Infrastructure (Terraform)
+# ══════════════════════════════════════════════
+# First-time setup: creates volume, SSH key, firewall, and VM.
+# Supports multiple cloud providers via CLOUD_PROVIDER variable.
+# After this, use Server Control workflow to start/stop.
+# ══════════════════════════════════════════════
+name: "🏗️ Provision Infrastructure"
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action"
+        required: true
+        default: "apply"
+        type: choice
+        options:
+          - plan
+          - apply
+      server_plan:
+        description: "Server plan override (leave empty for default)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  TF_VAR_cloud_provider: ${{ vars.CLOUD_PROVIDER || 'vultr' }}
+  TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+  TF_VAR_server_plan: ${{ github.event.inputs.server_plan }}
+  TF_VAR_domain_name: ${{ secrets.DOMAIN_NAME }}
+  TF_VAR_domain_subdomain: ${{ secrets.DOMAIN_SUBDOMAIN }}
+  TF_VAR_hcloud_token: ${{ secrets.HETZNER_API_TOKEN }}
+  TF_VAR_hetzner_dns_token: ${{ secrets.HETZNER_DNS_TOKEN }}
+  TF_VAR_vultr_api_key: ${{ secrets.VULTR_API_KEY }}
+
+jobs:
+  terraform:
+    name: Terraform ${{ github.event.inputs.action }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.x"
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: |
+          terraform plan -out=tfplan -input=false \
+            -var "server_enabled=true" \
+            -var 'admin_ips=["${{ secrets.ADMIN_IP }}/32"]'
+
+      - name: Terraform Apply
+        if: github.event.inputs.action == 'apply'
+        run: terraform apply -auto-approve tfplan
+
+      - name: Save outputs
+        if: github.event.inputs.action == 'apply'
+        id: outputs
+        run: |
+          echo "server_ip=$(terraform output -raw server_ip)" >> "$GITHUB_OUTPUT"
+          echo "minecraft_address=$(terraform output -raw minecraft_address)" >> "$GITHUB_OUTPUT"
+          echo "$(terraform output -raw server_ip)" > ../server_ip.txt
+
+      - name: Commit server_ip.txt
+        if: github.event.inputs.action == 'apply'
+        working-directory: .
+        run: |
+          cd ..
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add server_ip.txt
+          git diff --cached --quiet || git commit -m "chore: update server_ip.txt (${{ steps.outputs.outputs.server_ip }})"
+          git push || true
+
+      - name: Summary
+        if: github.event.inputs.action == 'apply'
+        run: |
+          echo "## 🏗️ Infrastructure Provisioned" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Server IP | \`${{ steps.outputs.outputs.server_ip }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Minecraft Address | \`${{ steps.outputs.outputs.minecraft_address }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Server Type | \`$(terraform output -raw server_plan)\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Provider | \`$(terraform output -raw cloud_provider)\` |" >> "$GITHUB_STEP_SUMMARY"
+
+      # Auto-trigger deploy after provision
+      - name: Trigger deploy workflow
+        if: github.event.inputs.action == 'apply'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'deploy.yml',
+              ref: context.ref,
+              inputs: {
+                server_ip: '${{ steps.outputs.outputs.server_ip }}'
+              }
+            });

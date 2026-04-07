@@ -1,0 +1,20 @@
+---
+- name: Configure Minecraft Server
+  hosts: minecraft
+  become: true
+
+  vars_files:
+    - group_vars/all.yml
+
+  pre_tasks:
+    - name: Wait for cloud-init to finish
+      command: cloud-init status --wait
+      changed_when: false
+      timeout: 300
+
+  roles:
+    - base
+    - java
+    - minecraft
+    - backup
+    - monitoring

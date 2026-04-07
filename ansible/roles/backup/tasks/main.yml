@@ -1,0 +1,116 @@
+---
+# ══════════════════════════════════════════════
+# Backup Role – Restic + S3 with RCON integration
+# ══════════════════════════════════════════════
+
+- name: Skip backup setup if disabled
+  meta: end_play
+  when: not backup_enabled
+
+# ── Install restic ───────────────────────────
+- name: Install restic
+  apt:
+    name: restic
+    state: present
+
+- name: Ensure restic is up to date (self-update)
+  command: restic self-update
+  changed_when: false
+  failed_when: false
+
+# ── Backup directories ──────────────────────
+- name: Create backup directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0750"
+  loop:
+    - "{{ minecraft_home }}/backups"
+    - "{{ minecraft_home }}/backups/scripts"
+    - "{{ minecraft_home }}/backups/logs"
+    - "{{ minecraft_home }}/backups/local"  # Local pre-staging
+
+# ── Restic environment file ─────────────────
+- name: Deploy restic environment file
+  template:
+    src: restic-env.j2
+    dest: "{{ minecraft_home }}/backups/.restic-env"
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0600"
+
+# ── Initialize restic repository ────────────
+- name: Initialize restic repository
+  become_user: "{{ minecraft_user }}"
+  shell: |
+    source {{ minecraft_home }}/backups/.restic-env
+    restic init 2>/dev/null || true
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+# ── Deploy backup script ────────────────────
+- name: Deploy backup script
+  template:
+    src: backup.sh.j2
+    dest: "{{ minecraft_home }}/backups/scripts/backup.sh"
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0750"
+
+# ── Deploy restore script ───────────────────
+- name: Deploy restore script
+  template:
+    src: restore.sh.j2
+    dest: "{{ minecraft_home }}/backups/scripts/restore.sh"
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0750"
+
+# ── Deploy backup verify script ─────────────
+- name: Deploy backup verify script
+  template:
+    src: verify-backup.sh.j2
+    dest: "{{ minecraft_home }}/backups/scripts/verify-backup.sh"
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0750"
+
+# ── Cron jobs ────────────────────────────────
+- name: Setup automated backup cron
+  cron:
+    name: "minecraft-backup"
+    user: "{{ minecraft_user }}"
+    minute: "{{ backup_schedule_minute }}"
+    hour: "{{ backup_schedule_hour }}"
+    day: "{{ backup_schedule_day }}"
+    month: "{{ backup_schedule_month }}"
+    weekday: "{{ backup_schedule_weekday }}"
+    job: "{{ minecraft_home }}/backups/scripts/backup.sh >> {{ minecraft_home }}/backups/logs/backup.log 2>&1"
+
+- name: Setup weekly backup verification cron
+  cron:
+    name: "minecraft-backup-verify"
+    user: "{{ minecraft_user }}"
+    minute: "0"
+    hour: "5"
+    weekday: "0"
+    job: "{{ minecraft_home }}/backups/scripts/verify-backup.sh >> {{ minecraft_home }}/backups/logs/verify.log 2>&1"
+
+# ── Log rotation ─────────────────────────────
+- name: Configure backup log rotation
+  copy:
+    dest: /etc/logrotate.d/minecraft-backup
+    content: |
+      {{ minecraft_home }}/backups/logs/*.log {
+        weekly
+        rotate 8
+        compress
+        delaycompress
+        missingok
+        notifempty
+        create 640 {{ minecraft_user }} {{ minecraft_group }}
+      }
+    mode: "0644"

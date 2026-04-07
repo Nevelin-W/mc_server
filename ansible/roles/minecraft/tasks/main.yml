@@ -1,0 +1,147 @@
+---
+# ══════════════════════════════════════════════
+# Minecraft Server Role – Modpack-Agnostic
+# ══════════════════════════════════════════════
+
+# ── Load modpack catalog ─────────────────────
+- name: Load modpack catalog
+  include_vars:
+    file: "{{ playbook_dir }}/../config/modpacks.yml"
+    name: modpack_catalog
+
+- name: Resolve active modpack from catalog
+  set_fact:
+    active_modpack: "{{ modpack_catalog.modpacks[modpack_name] }}"
+  when: modpack_name in modpack_catalog.modpacks
+
+- name: Fail if modpack not found in catalog
+  fail:
+    msg: >
+      Modpack '{{ modpack_name }}' not found in config/modpacks.yml.
+      Available: {{ modpack_catalog.modpacks.keys() | list | join(', ') }}
+  when: modpack_name not in modpack_catalog.modpacks
+
+- name: Override variables from modpack catalog
+  set_fact:
+    modpack_loader: "{{ active_modpack.loader | default(modpack_loader) }}"
+    modpack_minecraft_version: "{{ active_modpack.minecraft_version | default(modpack_minecraft_version) }}"
+    modpack_loader_version: "{{ active_modpack.loader_version | default(modpack_loader_version) }}"
+    modpack_download_url: "{{ active_modpack.download_url | default(modpack_download_url) }}"
+    modpack_curseforge_project_id: "{{ active_modpack.curseforge_project_id | default(modpack_curseforge_project_id) }}"
+    java_version: "{{ active_modpack.java_version | default(java_version) }}"
+    jvm_min_memory: "{{ active_modpack.min_memory | default(jvm_min_memory) }}"
+    jvm_max_memory: "{{ active_modpack.max_memory | default(jvm_max_memory) }}"
+
+- name: Display active modpack info
+  debug:
+    msg: |
+      ╔══════════════════════════════════════════╗
+      ║ Modpack: {{ active_modpack.display_name }}
+      ║ Loader:  {{ modpack_loader }} {{ modpack_loader_version }}
+      ║ MC:      {{ modpack_minecraft_version }}
+      ║ Memory:  {{ jvm_min_memory }} – {{ jvm_max_memory }}
+      ╚══════════════════════════════════════════╝
+
+# ── Directory structure ──────────────────────
+- name: Create server directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0755"
+  loop:
+    - "{{ minecraft_home }}"
+    - "{{ minecraft_home }}/server"
+    - "{{ minecraft_home }}/tools"
+    - "{{ minecraft_home }}/backups"
+    - "{{ minecraft_home }}/logs"
+    - "{{ data_volume_mount }}/world"
+
+- name: Symlink world directory to persistent volume
+  file:
+    src: "{{ data_volume_mount }}/world"
+    dest: "{{ minecraft_home }}/server/world"
+    state: link
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    force: true
+
+# ── Install mcrcon ───────────────────────────
+- name: Download mcrcon
+  get_url:
+    url: "https://github.com/Tiiffi/mcrcon/releases/download/v{{ mcrcon_version }}/mcrcon-{{ mcrcon_version }}-linux-x86-64.tar.gz"
+    dest: "/tmp/mcrcon.tar.gz"
+    mode: "0644"
+
+- name: Extract mcrcon
+  unarchive:
+    src: /tmp/mcrcon.tar.gz
+    dest: "{{ minecraft_home }}/tools/"
+    remote_src: true
+    creates: "{{ minecraft_home }}/tools/mcrcon"
+
+- name: Make mcrcon executable
+  file:
+    path: "{{ minecraft_home }}/tools/mcrcon"
+    mode: "0755"
+
+- name: Symlink mcrcon to /usr/local/bin
+  file:
+    src: "{{ minecraft_home }}/tools/mcrcon"
+    dest: /usr/local/bin/mcrcon
+    state: link
+
+# ── Install modpack server ───────────────────
+- name: Install modpack via packwiz/curseforge
+  include_tasks: "install_{{ modpack_loader }}.yml"
+
+# ── Accept EULA ──────────────────────────────
+- name: Accept Minecraft EULA
+  copy:
+    dest: "{{ minecraft_home }}/server/eula.txt"
+    content: "eula=true\n"
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0644"
+
+# ── Server configuration ────────────────────
+- name: Deploy server.properties
+  template:
+    src: server.properties.j2
+    dest: "{{ minecraft_home }}/server/server.properties"
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0644"
+  notify: restart minecraft
+
+# ── Start script ─────────────────────────────
+- name: Deploy start script
+  template:
+    src: start.sh.j2
+    dest: "{{ minecraft_home }}/server/start.sh"
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0755"
+  notify: restart minecraft
+
+# ── Systemd service ─────────────────────────
+- name: Deploy systemd unit
+  template:
+    src: minecraft.service.j2
+    dest: /etc/systemd/system/minecraft.service
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart minecraft
+
+- name: Enable minecraft service
+  systemd:
+    name: minecraft
+    enabled: true
+    daemon_reload: true
+
+- name: Start minecraft service
+  systemd:
+    name: minecraft
+    state: started

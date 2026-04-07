@@ -1,0 +1,8 @@
+# Restic environment – sourced by backup scripts
+# Works with any S3-compatible backend: Cloudflare R2, AWS S3, Backblaze B2, etc.
+# R2 endpoint format: https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+export AWS_ACCESS_KEY_ID="{{ backup_s3_access_key }}"
+export AWS_SECRET_ACCESS_KEY="{{ backup_s3_secret_key }}"
+export RESTIC_REPOSITORY="s3:{{ backup_s3_endpoint }}/{{ backup_s3_bucket }}"
+export RESTIC_PASSWORD="{{ restic_password }}"
+export RESTIC_CACHE_DIR="{{ minecraft_home }}/backups/.cache"

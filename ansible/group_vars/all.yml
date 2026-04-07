@@ -1,0 +1,120 @@
+---
+# ═══════════════════════════════════════════════
+# Minecraft Server – Master Configuration
+# ═══════════════════════════════════════════════
+# This is the SINGLE source of truth for server configuration.
+# Change values here; Ansible applies them everywhere.
+
+# ── System ───────────────────────────────────
+minecraft_user: minecraft
+minecraft_group: minecraft
+minecraft_home: /opt/minecraft
+data_volume_mount: /data/minecraft
+world_dir: "{{ data_volume_mount }}/world"
+
+# ── Modpack Configuration ────────────────────
+# Set the active modpack. Modpack definitions are in config/modpacks.yml
+# and loaded into this variable structure during deploy.
+#
+# Override these with --extra-vars or in your config/server.yml
+modpack_name: "prominence-2-rpg"
+modpack_version: "latest"           # Pin to a specific version or "latest"
+
+# Modpack loader type: forge, fabric, neoforge, quilt
+modpack_loader: "forge"
+modpack_minecraft_version: "1.20.1"
+modpack_loader_version: ""          # Auto-detected if empty
+
+# Download source – set by modpack catalog, can be overridden
+modpack_download_url: ""
+modpack_curseforge_project_id: ""
+modpack_curseforge_file_id: ""
+
+# ── Java ─────────────────────────────────────
+java_version: "21"
+java_package: "temurin-21-jdk"
+
+# ── JVM Tuning (Aikar's flags) ──────────────
+jvm_min_memory: "12G"
+jvm_max_memory: "24G"
+jvm_extra_flags: >-
+  -XX:+UseG1GC
+  -XX:+ParallelRefProcEnabled
+  -XX:MaxGCPauseMillis=200
+  -XX:+UnlockExperimentalVMOptions
+  -XX:+DisableExplicitGC
+  -XX:+AlwaysPreTouch
+  -XX:G1NewSizePercent=30
+  -XX:G1MaxNewSizePercent=40
+  -XX:G1HeapRegionSize=8M
+  -XX:G1ReservePercent=20
+  -XX:G1HeapWastePercent=5
+  -XX:G1MixedGCCountTarget=4
+  -XX:InitiatingHeapOccupancyPercent=15
+  -XX:G1MixedGCLiveThresholdPercent=90
+  -XX:G1RSetUpdatingPauseTimePercent=5
+  -XX:SurvivorRatio=32
+  -XX:+PerfDisableSharedMem
+  -XX:MaxTenuringThreshold=1
+  -Dusing.aikars.flags=https://mcflags.emc.gs
+  -Daikars.new.flags=true
+
+# ── Server Properties ───────────────────────
+server_port: 25565
+rcon_enabled: true
+rcon_port: 25575
+rcon_password: "CHANGE_ME_IN_SECRETS"
+query_enabled: true
+query_port: 25565
+max_players: 20
+motd: "\\u00a7b\\u00a7lMinecraft Server \\u00a7r\\u00a77| Modded"
+view_distance: 12
+simulation_distance: 10
+difficulty: "hard"
+gamemode: "survival"
+pvp: true
+online_mode: true
+enable_command_block: false
+server_properties_extra: {}        # Additional server.properties key-values
+
+# ── RCON ─────────────────────────────────────
+mcrcon_version: "0.7.2"
+
+# ── Backup Configuration ────────────────────
+# Uses Cloudflare R2 by default (S3-compatible, cheap, zero egress fees).
+# Any S3-compatible backend works: R2, AWS S3, Backblaze B2, etc.
+backup_enabled: true
+backup_s3_endpoint: ""             # R2: https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+backup_s3_bucket: "mc-server-backups"
+backup_s3_access_key: ""           # R2: API token Access Key ID
+backup_s3_secret_key: ""           # R2: API token Secret Access Key
+restic_password: ""                # Encryption password for restic repo
+
+# Backup schedule (cron syntax)
+backup_schedule_minute: "0"
+backup_schedule_hour: "*/3"        # Every 3 hours
+backup_schedule_day: "*"
+backup_schedule_month: "*"
+backup_schedule_weekday: "*"
+
+# Retention policy
+backup_retain_hourly: 8            # Keep 8 three-hourly snapshots (24h)
+backup_retain_daily: 7             # Keep 7 daily snapshots
+backup_retain_weekly: 4            # Keep 4 weekly snapshots
+backup_retain_monthly: 6           # Keep 6 monthly snapshots
+
+# Backup verification schedule (weekly)
+backup_verify_schedule: "0 5 * * 0"  # Sunday 05:00
+
+# ── Monitoring ───────────────────────────────
+monitoring_enabled: true
+grafana_cloud_url: ""              # Loki push URL
+grafana_cloud_user: ""
+grafana_cloud_api_key: ""
+node_exporter_version: "1.7.0"
+promtail_version: "2.9.3"
+
+# ── Auto-restart (within a running VM) ───────
+auto_restart_enabled: true
+auto_restart_max_retries: 5
+auto_restart_delay_sec: 30

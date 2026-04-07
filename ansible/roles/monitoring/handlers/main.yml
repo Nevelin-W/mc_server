@@ -1,0 +1,10 @@
+---
+- name: restart node_exporter
+  systemd:
+    name: node_exporter
+    state: restarted
+
+- name: restart promtail
+  systemd:
+    name: promtail
+    state: restarted

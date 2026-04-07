@@ -1,0 +1,122 @@
+# ══════════════════════════════════════════════
+# Deploy / Update Server (Ansible)
+# ══════════════════════════════════════════════
+name: "🚀 Deploy Server"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "ansible/**"
+      - "config/**"
+      - ".github/workflows/deploy.yml"
+
+  workflow_dispatch:
+    inputs:
+      server_ip:
+        description: "Server IP (leave empty to use Terraform output)"
+        required: false
+        type: string
+      modpack_name:
+        description: "Modpack to install (from config/modpacks.yml)"
+        required: false
+        default: ""
+        type: string
+      tags:
+        description: "Ansible tags to run (comma-separated, empty = all)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Ansible Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible
+        run: pip install ansible jmespath
+
+      - name: Resolve server IP
+        id: ip
+        run: |
+          if [[ -n "${{ github.event.inputs.server_ip }}" ]]; then
+            echo "ip=${{ github.event.inputs.server_ip }}" >> "$GITHUB_OUTPUT"
+          else
+            # Try to get from Terraform state
+            cd terraform
+            pip install hcloud
+            # Fallback: use stored IP from last provision
+            if [[ -f ../server_ip.txt ]]; then
+              echo "ip=$(cat ../server_ip.txt)" >> "$GITHUB_OUTPUT"
+            else
+              echo "::error::No server IP available. Run provision first or provide IP manually."
+              exit 1
+            fi
+          fi
+
+      - name: Write SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/mc_server
+          chmod 600 ~/.ssh/mc_server
+          ssh-keyscan -H ${{ steps.ip.outputs.ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Generate Ansible inventory
+        run: |
+          cat > ansible/inventory/hosts.ini <<EOF
+          [minecraft]
+          ${{ steps.ip.outputs.ip }} ansible_user=root ansible_ssh_private_key_file=~/.ssh/mc_server
+          EOF
+
+      - name: Build extra vars
+        id: vars
+        run: |
+          EXTRA_VARS=""
+          if [[ -n "${{ github.event.inputs.modpack_name }}" ]]; then
+            EXTRA_VARS="modpack_name=${{ github.event.inputs.modpack_name }}"
+          fi
+          # Always pass secrets
+          EXTRA_VARS="${EXTRA_VARS} rcon_password=${{ secrets.RCON_PASSWORD }}"
+          EXTRA_VARS="${EXTRA_VARS} backup_s3_endpoint=${{ secrets.BACKUP_S3_ENDPOINT }}"
+          EXTRA_VARS="${EXTRA_VARS} backup_s3_bucket=${{ secrets.BACKUP_S3_BUCKET }}"
+          EXTRA_VARS="${EXTRA_VARS} backup_s3_access_key=${{ secrets.BACKUP_S3_ACCESS_KEY }}"
+          EXTRA_VARS="${EXTRA_VARS} backup_s3_secret_key=${{ secrets.BACKUP_S3_SECRET_KEY }}"
+          EXTRA_VARS="${EXTRA_VARS} restic_password=${{ secrets.RESTIC_PASSWORD }}"
+          EXTRA_VARS="${EXTRA_VARS} grafana_cloud_url=${{ secrets.GRAFANA_CLOUD_URL }}"
+          EXTRA_VARS="${EXTRA_VARS} grafana_cloud_user=${{ secrets.GRAFANA_CLOUD_USER }}"
+          EXTRA_VARS="${EXTRA_VARS} grafana_cloud_api_key=${{ secrets.GRAFANA_CLOUD_API_KEY }}"
+          echo "extra_vars=${EXTRA_VARS}" >> "$GITHUB_OUTPUT"
+
+      - name: Run Ansible playbook
+        run: |
+          cd ansible
+          TAGS_ARG=""
+          if [[ -n "${{ github.event.inputs.tags }}" ]]; then
+            TAGS_ARG="--tags ${{ github.event.inputs.tags }}"
+          fi
+
+          ansible-playbook site.yml \
+            -i inventory/hosts.ini \
+            --extra-vars "${{ steps.vars.outputs.extra_vars }}" \
+            ${TAGS_ARG} \
+            -v
+
+      - name: Summary
+        run: |
+          echo "## 🚀 Deployment Complete" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Server:** \`${{ steps.ip.outputs.ip }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Modpack:** \`${{ github.event.inputs.modpack_name || 'default (from config)' }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Trigger:** ${{ github.event_name }}" >> "$GITHUB_STEP_SUMMARY"

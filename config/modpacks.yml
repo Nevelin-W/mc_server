@@ -1,0 +1,122 @@
+# ═══════════════════════════════════════════════
+# Modpack Catalog
+# ═══════════════════════════════════════════════
+# Add modpacks here. Each entry defines everything needed
+# to install and run that modpack on the server.
+#
+# To switch modpacks:
+#   1. Add/verify the entry below
+#   2. Run the "Change Modpack" workflow, OR
+#   3. Set modpack_name in ansible/group_vars/all.yml and push
+#
+# Required fields per modpack:
+#   display_name       – Human-readable name
+#   loader             – forge, fabric, neoforge, quilt
+#   minecraft_version  – e.g., 1.20.1
+#   loader_version     – Loader build version
+#   download_url       – Direct URL to server pack zip
+#   java_version       – Required Java version (17 or 21)
+#   min_memory / max_memory – JVM heap sizing
+#
+# Optional fields:
+#   curseforge_project_id  – CurseForge numeric project ID
+#   curseforge_file_id     – Specific file ID for pinning
+#   description            – What this pack is about
+#   recommended_server     – Hetzner server type
+
+modpacks:
+  # ── Prominence II RPG: Hasturian Era ─────────
+  prominence-2-rpg:
+    display_name: "Prominence II RPG: Hasturian Era"
+    description: "300+ mod RPG adventure pack with quests, dungeons, and custom lore"
+    loader: forge
+    minecraft_version: "1.20.1"
+    loader_version: "47.2.0"
+    download_url: ""  # Set to the server pack URL from CurseForge
+    curseforge_project_id: "857242"
+    java_version: "21"
+    min_memory: "12G"
+    max_memory: "24G"
+    recommended_server: "ccx33"
+
+  # ── Better Minecraft [FORGE] ─────────────────
+  better-mc-forge:
+    display_name: "Better Minecraft [FORGE]"
+    description: "Enhanced vanilla+ experience with QoL mods"
+    loader: forge
+    minecraft_version: "1.20.1"
+    loader_version: "47.2.0"
+    download_url: ""
+    curseforge_project_id: "463798"
+    java_version: "21"
+    min_memory: "8G"
+    max_memory: "16G"
+    recommended_server: "ccx23"
+
+  # ── All the Mods 9 ──────────────────────────
+  all-the-mods-9:
+    display_name: "All the Mods 9"
+    description: "Kitchen sink pack with 400+ mods"
+    loader: forge
+    minecraft_version: "1.20.1"
+    loader_version: "47.2.0"
+    download_url: ""
+    curseforge_project_id: "715572"
+    java_version: "21"
+    min_memory: "12G"
+    max_memory: "28G"
+    recommended_server: "ccx33"
+
+  # ── RLCraft ─────────────────────────────────
+  rlcraft:
+    display_name: "RLCraft"
+    description: "Hardcore survival modpack"
+    loader: forge
+    minecraft_version: "1.12.2"
+    loader_version: "14.23.5.2860"
+    download_url: ""
+    curseforge_project_id: "285109"
+    java_version: "17"
+    min_memory: "6G"
+    max_memory: "10G"
+    recommended_server: "ccx23"
+
+  # ── Cobblemon ───────────────────────────────
+  cobblemon-fabric:
+    display_name: "Cobblemon (Fabric)"
+    description: "Pokemon in Minecraft on Fabric"
+    loader: fabric
+    minecraft_version: "1.20.1"
+    loader_version: "0.15.6"
+    download_url: ""
+    java_version: "21"
+    min_memory: "6G"
+    max_memory: "12G"
+    recommended_server: "ccx23"
+
+  # ── Vanilla+ (minimal mods) ────────────────
+  vanilla-plus:
+    display_name: "Vanilla+ (Performance)"
+    description: "Near-vanilla with performance mods only (Lithium, Starlight, etc.)"
+    loader: fabric
+    minecraft_version: "1.20.4"
+    loader_version: "0.15.6"
+    download_url: ""
+    java_version: "21"
+    min_memory: "4G"
+    max_memory: "8G"
+    recommended_server: "cx32"
+
+  # ── Template (copy this) ───────────────────
+  # my-custom-pack:
+  #   display_name: "My Custom Pack"
+  #   description: "Description here"
+  #   loader: forge          # forge, fabric, neoforge, quilt
+  #   minecraft_version: "1.20.1"
+  #   loader_version: ""
+  #   download_url: "https://..."
+  #   curseforge_project_id: ""
+  #   java_version: "21"
+  #   min_memory: "8G"
+  #   max_memory: "16G"
+  #   recommended_server: "ccx23"

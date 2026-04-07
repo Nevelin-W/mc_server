@@ -1,0 +1,41 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: {{ grafana_cloud_url }}
+    basic_auth:
+      username: {{ grafana_cloud_user }}
+      password: {{ grafana_cloud_api_key }}
+
+scrape_configs:
+  - job_name: minecraft-server
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: minecraft
+          modpack: {{ modpack_name }}
+          host: {{ ansible_hostname }}
+          __path__: {{ minecraft_home }}/logs/*.log
+
+  - job_name: minecraft-backup
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: minecraft-backup
+          host: {{ ansible_hostname }}
+          __path__: {{ minecraft_home }}/backups/logs/*.log
+
+  - job_name: system
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: system
+          host: {{ ansible_hostname }}
+          __path__: /var/log/{syslog,auth.log}

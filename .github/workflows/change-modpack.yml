@@ -1,0 +1,110 @@
+# ══════════════════════════════════════════════
+# Change / Update Modpack
+# ══════════════════════════════════════════════
+name: "🔄 Change Modpack"
+
+on:
+  workflow_dispatch:
+    inputs:
+      modpack_name:
+        description: "Modpack to install (must exist in config/modpacks.yml)"
+        required: true
+        type: string
+      backup_first:
+        description: "Take backup before switching?"
+        required: true
+        default: true
+        type: boolean
+      wipe_world:
+        description: "Wipe world data? (new modpack may be incompatible)"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  change-modpack:
+    name: Switch to ${{ github.event.inputs.modpack_name }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate modpack exists in catalog
+        run: |
+          if ! python3 -c "
+          import yaml, sys
+          with open('config/modpacks.yml') as f:
+            data = yaml.safe_load(f)
+          if '${{ github.event.inputs.modpack_name }}' not in data.get('modpacks', {}):
+            print('ERROR: Modpack not found. Available:')
+            for k in data.get('modpacks', {}):
+              print(f'  - {k}')
+            sys.exit(1)
+          print('Modpack found in catalog.')
+          "; then
+            exit 1
+          fi
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/mc_server
+          chmod 600 ~/.ssh/mc_server
+          SERVER_IP=$(cat server_ip.txt)
+          echo "SERVER_IP=${SERVER_IP}" >> "$GITHUB_ENV"
+          ssh-keyscan -H "${SERVER_IP}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Pre-switch backup
+        if: github.event.inputs.backup_first == 'true'
+        run: |
+          SSH="ssh -i ~/.ssh/mc_server root@${SERVER_IP}"
+          ${SSH} "sudo -u minecraft /opt/minecraft/backups/scripts/backup.sh" || true
+
+      - name: Stop server
+        run: |
+          SSH="ssh -i ~/.ssh/mc_server root@${SERVER_IP}"
+          ${SSH} "systemctl stop minecraft" || true
+
+      - name: Wipe world data
+        if: github.event.inputs.wipe_world == 'true'
+        run: |
+          SSH="ssh -i ~/.ssh/mc_server root@${SERVER_IP}"
+          ${SSH} "rm -rf /data/minecraft/world/*"
+          echo "⚠️ World data wiped."
+
+      - name: Clean old server files
+        run: |
+          SSH="ssh -i ~/.ssh/mc_server root@${SERVER_IP}"
+          ${SSH} "rm -rf /opt/minecraft/server/mods /opt/minecraft/server/config /opt/minecraft/server/libraries /opt/minecraft/server/forge-*.jar /opt/minecraft/server/fabric-*.jar /opt/minecraft/modpack-staging/*"
+
+      - name: Setup Python & Ansible
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible
+        run: pip install ansible jmespath
+
+      - name: Deploy new modpack
+        run: |
+          cat > ansible/inventory/hosts.ini <<EOF
+          [minecraft]
+          ${SERVER_IP} ansible_user=root ansible_ssh_private_key_file=~/.ssh/mc_server
+          EOF
+
+          cd ansible
+          ansible-playbook site.yml \
+            -i inventory/hosts.ini \
+            --extra-vars "modpack_name=${{ github.event.inputs.modpack_name }} rcon_password=${{ secrets.RCON_PASSWORD }} backup_s3_endpoint=${{ secrets.BACKUP_S3_ENDPOINT }} backup_s3_bucket=${{ secrets.BACKUP_S3_BUCKET }} backup_s3_access_key=${{ secrets.BACKUP_S3_ACCESS_KEY }} backup_s3_secret_key=${{ secrets.BACKUP_S3_SECRET_KEY }} restic_password=${{ secrets.RESTIC_PASSWORD }}" \
+            -v
+
+      - name: Summary
+        run: |
+          echo "## 🔄 Modpack Changed" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **New modpack:** ${{ github.event.inputs.modpack_name }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **World wiped:** ${{ github.event.inputs.wipe_world }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Backup taken:** ${{ github.event.inputs.backup_first }}" >> "$GITHUB_STEP_SUMMARY"

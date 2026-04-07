@@ -1,0 +1,399 @@
+# ══════════════════════════════════════════════
+# Start / Stop / Restart Server
+# ══════════════════════════════════════════════
+# START  = terraform apply (create VM) → Ansible deploy → server running
+# STOP   = backup → RCON graceful stop → terraform apply (destroy VM)
+# Supports multiple cloud providers via CLOUD_PROVIDER variable.
+# ══════════════════════════════════════════════
+name: "⚡ Server Control"
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Server action"
+        required: true
+        type: choice
+        options:
+          - start
+          - stop
+          - restart
+          - status
+      server_size:
+        description: "Server plan override (leave empty for default)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  # ── Provider selection ──
+  TF_VAR_cloud_provider: ${{ vars.CLOUD_PROVIDER || 'vultr' }}
+  TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+  TF_VAR_server_plan: ${{ github.event.inputs.server_size }}
+  TF_VAR_domain_name: ${{ secrets.DOMAIN_NAME }}
+  TF_VAR_domain_subdomain: ${{ secrets.DOMAIN_SUBDOMAIN }}
+  # ── Provider tokens (only active one is used) ──
+  TF_VAR_hcloud_token: ${{ secrets.HETZNER_API_TOKEN }}
+  TF_VAR_hetzner_dns_token: ${{ secrets.HETZNER_DNS_TOKEN }}
+  TF_VAR_vultr_api_key: ${{ secrets.VULTR_API_KEY }}
+
+jobs:
+  # ── START: Create VM + Deploy + Run ────────
+  start:
+    name: "Start server"
+    if: github.event.inputs.action == 'start'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.x"
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Create VM (terraform apply)
+        working-directory: terraform
+        run: |
+          terraform apply -auto-approve \
+            -var "server_enabled=true" \
+            -var 'admin_ips=["${{ secrets.ADMIN_IP }}/32"]'
+
+      - name: Get server IP
+        id: ip
+        working-directory: terraform
+        run: |
+          SERVER_IP=$(terraform output -raw server_ip)
+          echo "ip=${SERVER_IP}" >> "$GITHUB_OUTPUT"
+          echo "${SERVER_IP}" > ../server_ip.txt
+
+      - name: Commit server_ip.txt
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add server_ip.txt
+          git diff --cached --quiet || git commit -m "chore: update server_ip.txt (${{ steps.ip.outputs.ip }})"
+          git push || true
+
+      - name: Wait for server to be reachable
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/mc_server
+          chmod 600 ~/.ssh/mc_server
+          for i in $(seq 1 30); do
+            if ssh -i ~/.ssh/mc_server -o ConnectTimeout=5 -o StrictHostKeyChecking=no root@${{ steps.ip.outputs.ip }} "echo ok" 2>/dev/null; then
+              echo "Server reachable."
+              break
+            fi
+            echo "Waiting... ($i/30)"
+            sleep 10
+          done
+          ssh-keyscan -H ${{ steps.ip.outputs.ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Wait for cloud-init
+        run: |
+          ssh -i ~/.ssh/mc_server -o StrictHostKeyChecking=no root@${{ steps.ip.outputs.ip }} \
+            "cloud-init status --wait" 2>/dev/null || true
+
+      - name: Setup Python & Ansible
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible
+        run: pip install ansible jmespath
+
+      - name: Generate inventory
+        run: |
+          cat > ansible/inventory/hosts.ini <<EOF
+          [minecraft]
+          ${{ steps.ip.outputs.ip }} ansible_user=root ansible_ssh_private_key_file=~/.ssh/mc_server
+          EOF
+
+      - name: Deploy with Ansible
+        run: |
+          cd ansible
+          ansible-playbook site.yml \
+            -i inventory/hosts.ini \
+            --extra-vars "rcon_password=${{ secrets.RCON_PASSWORD }} backup_s3_endpoint=${{ secrets.BACKUP_S3_ENDPOINT }} backup_s3_bucket=${{ secrets.BACKUP_S3_BUCKET }} backup_s3_access_key=${{ secrets.BACKUP_S3_ACCESS_KEY }} backup_s3_secret_key=${{ secrets.BACKUP_S3_SECRET_KEY }} restic_password=${{ secrets.RESTIC_PASSWORD }} grafana_cloud_url=${{ secrets.GRAFANA_CLOUD_URL }} grafana_cloud_user=${{ secrets.GRAFANA_CLOUD_USER }} grafana_cloud_api_key=${{ secrets.GRAFANA_CLOUD_API_KEY }}" \
+            -v
+
+      - name: Get connection address
+        id: addr
+        working-directory: terraform
+        run: |
+          ADDR=$(terraform output -raw minecraft_address 2>/dev/null || echo "${{ steps.ip.outputs.ip }}:25565")
+          DOMAIN=$(terraform output -raw domain 2>/dev/null || echo "")
+          echo "address=${ADDR}" >> "$GITHUB_OUTPUT"
+          echo "domain=${DOMAIN}" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        run: |
+          echo "## ⚡ Server Started" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Property | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Server IP | \`${{ steps.ip.outputs.ip }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Connect Address | \`${{ steps.addr.outputs.address }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Server Plan | \`$(cd terraform && terraform output -raw server_plan)\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Provider | \`$(cd terraform && terraform output -raw cloud_provider)\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Time | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "${{ steps.addr.outputs.domain }}" != "(no domain configured)" ]]; then
+            echo "Players connect to: **${{ steps.addr.outputs.address }}** (DNS auto-updated)" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Players connect to: **${{ steps.ip.outputs.ip }}:25565** (no domain configured)" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Server may take 1-2 additional minutes to fully load the modpack." >> "$GITHUB_STEP_SUMMARY"
+
+  # ── STOP: Backup + Destroy VM ──────────────
+  stop:
+    name: "Stop server (destroy VM)"
+    if: github.event.inputs.action == 'stop'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/mc_server
+          chmod 600 ~/.ssh/mc_server
+          if [[ -f server_ip.txt ]]; then
+            SERVER_IP=$(cat server_ip.txt)
+          else
+            echo "No server_ip.txt found, VM may already be stopped."
+            SERVER_IP=""
+          fi
+          echo "SERVER_IP=${SERVER_IP}" >> "$GITHUB_ENV"
+          if [[ -n "${SERVER_IP}" ]]; then
+            ssh-keyscan -H "${SERVER_IP}" >> ~/.ssh/known_hosts 2>/dev/null || true
+          fi
+
+      - name: Graceful Minecraft stop + backup
+        if: env.SERVER_IP != ''
+        run: |
+          SSH="ssh -i ~/.ssh/mc_server -o ConnectTimeout=10 root@${SERVER_IP}"
+
+          # Best-effort: RCON graceful shutdown + backup
+          ${SSH} "
+            # Warn players
+            mcrcon -H 127.0.0.1 -P 25575 -p '${{ secrets.RCON_PASSWORD }}' \
+              'say §c[Server] Shutting down in 30 seconds. World will be saved.' 2>/dev/null || true
+            sleep 30
+
+            # Take backup while server is still running
+            sudo -u minecraft /opt/minecraft/backups/scripts/backup.sh 2>/dev/null || true
+
+            # Graceful RCON stop
+            mcrcon -H 127.0.0.1 -P 25575 -p '${{ secrets.RCON_PASSWORD }}' 'save-all' 2>/dev/null || true
+            sleep 5
+            mcrcon -H 127.0.0.1 -P 25575 -p '${{ secrets.RCON_PASSWORD }}' 'stop' 2>/dev/null || true
+            sleep 10
+            systemctl stop minecraft 2>/dev/null || true
+          " || echo "Warning: Could not gracefully stop (server may already be down)"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.x"
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Destroy VM (keep volume)
+        working-directory: terraform
+        run: |
+          terraform apply -auto-approve \
+            -var "server_enabled=false" \
+            -var 'admin_ips=["${{ secrets.ADMIN_IP }}/32"]'
+
+      - name: Clear server_ip.txt
+        run: |
+          echo "" > server_ip.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add server_ip.txt
+          git diff --cached --quiet || git commit -m "chore: server stopped, clear server_ip.txt"
+          git push || true
+
+      - name: Summary
+        run: |
+          echo "## ⚡ Server Stopped" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "VM destroyed. Volume and backups preserved." >> "$GITHUB_STEP_SUMMARY"
+          echo "Ongoing cost: ~€3/month (volume + object storage)." >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Run **Start** to recreate the VM and resume playing." >> "$GITHUB_STEP_SUMMARY"
+
+  # ── RESTART: Stop + Start ──────────────────
+  restart:
+    name: "Restart server (rebuild VM)"
+    if: github.event.inputs.action == 'restart'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup SSH + backup before restart
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/mc_server
+          chmod 600 ~/.ssh/mc_server
+          if [[ -f server_ip.txt ]] && [[ -s server_ip.txt ]]; then
+            SERVER_IP=$(cat server_ip.txt)
+            ssh-keyscan -H "${SERVER_IP}" >> ~/.ssh/known_hosts 2>/dev/null || true
+            SSH="ssh -i ~/.ssh/mc_server -o ConnectTimeout=10 root@${SERVER_IP}"
+            ${SSH} "
+              mcrcon -H 127.0.0.1 -P 25575 -p '${{ secrets.RCON_PASSWORD }}' 'say §e[Server] Restarting. Back in ~3 minutes.' 2>/dev/null || true
+              sleep 10
+              sudo -u minecraft /opt/minecraft/backups/scripts/backup.sh 2>/dev/null || true
+              mcrcon -H 127.0.0.1 -P 25575 -p '${{ secrets.RCON_PASSWORD }}' 'stop' 2>/dev/null || true
+              sleep 10
+            " || true
+          fi
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.x"
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Destroy VM
+        working-directory: terraform
+        run: |
+          terraform apply -auto-approve \
+            -var "server_enabled=false" \
+            -var 'admin_ips=["${{ secrets.ADMIN_IP }}/32"]'
+
+      - name: Create VM
+        working-directory: terraform
+        run: |
+          terraform apply -auto-approve \
+            -var "server_enabled=true" \
+            -var 'admin_ips=["${{ secrets.ADMIN_IP }}/32"]'
+
+      - name: Get new server IP
+        id: ip
+        working-directory: terraform
+        run: |
+          SERVER_IP=$(terraform output -raw server_ip)
+          echo "ip=${SERVER_IP}" >> "$GITHUB_OUTPUT"
+          echo "${SERVER_IP}" > ../server_ip.txt
+
+      - name: Commit server_ip.txt
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add server_ip.txt
+          git diff --cached --quiet || git commit -m "chore: update server_ip.txt after restart (${{ steps.ip.outputs.ip }})"
+          git push || true
+
+      - name: Wait for server + deploy
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ steps.ip.outputs.ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          for i in $(seq 1 30); do
+            if ssh -i ~/.ssh/mc_server -o ConnectTimeout=5 -o StrictHostKeyChecking=no root@${{ steps.ip.outputs.ip }} "echo ok" 2>/dev/null; then
+              break
+            fi
+            sleep 10
+          done
+          ssh -i ~/.ssh/mc_server -o StrictHostKeyChecking=no root@${{ steps.ip.outputs.ip }} "cloud-init status --wait" 2>/dev/null || true
+
+      - name: Setup Python & Ansible
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Ansible
+        run: pip install ansible jmespath
+
+      - name: Deploy with Ansible
+        run: |
+          cat > ansible/inventory/hosts.ini <<EOF
+          [minecraft]
+          ${{ steps.ip.outputs.ip }} ansible_user=root ansible_ssh_private_key_file=~/.ssh/mc_server
+          EOF
+          cd ansible
+          ansible-playbook site.yml \
+            -i inventory/hosts.ini \
+            --extra-vars "rcon_password=${{ secrets.RCON_PASSWORD }} backup_s3_endpoint=${{ secrets.BACKUP_S3_ENDPOINT }} backup_s3_bucket=${{ secrets.BACKUP_S3_BUCKET }} backup_s3_access_key=${{ secrets.BACKUP_S3_ACCESS_KEY }} backup_s3_secret_key=${{ secrets.BACKUP_S3_SECRET_KEY }} restic_password=${{ secrets.RESTIC_PASSWORD }}" \
+            -v
+
+      - name: Summary
+        run: |
+          echo "## ⚡ Server Restarted" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **New IP:** \`${{ steps.ip.outputs.ip }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Address:** \`${{ steps.ip.outputs.ip }}:25565\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Note:** IP may have changed. Update your client." >> "$GITHUB_STEP_SUMMARY"
+
+  # ── STATUS: Check if server exists ─────────
+  status:
+    name: "Check status"
+    if: github.event.inputs.action == 'status'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.x"
+          terraform_wrapper: false
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Get Terraform state
+        id: tf
+        working-directory: terraform
+        run: |
+          echo "server_status=$(terraform output -raw server_status 2>/dev/null || echo 'unknown')" >> "$GITHUB_OUTPUT"
+          echo "server_ip=$(terraform output -raw server_ip 2>/dev/null || echo '')" >> "$GITHUB_OUTPUT"
+
+      - name: Check Minecraft process
+        if: steps.tf.outputs.server_status != 'destroyed' && steps.tf.outputs.server_ip != '(server stopped)'
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/mc_server
+          chmod 600 ~/.ssh/mc_server
+          ssh-keyscan -H ${{ steps.tf.outputs.server_ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          ssh -i ~/.ssh/mc_server -o ConnectTimeout=10 root@${{ steps.tf.outputs.server_ip }} "
+            echo '=== systemd ==='
+            systemctl status minecraft --no-pager 2>/dev/null || echo 'Service not found'
+            echo '=== players ==='
+            mcrcon -H 127.0.0.1 -P 25575 -p '${{ secrets.RCON_PASSWORD }}' 'list' 2>/dev/null || echo 'RCON unavailable'
+            echo '=== uptime ==='
+            uptime
+            echo '=== memory ==='
+            free -h
+          " || echo "SSH connection failed"
+
+      - name: Summary
+        run: |
+          echo "## ⚡ Server Status" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **VM Status:** ${{ steps.tf.outputs.server_status }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **IP:** ${{ steps.tf.outputs.server_ip }}" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,60 @@
+---
+# ── NeoForge modpack installation ────────────
+
+- name: Create modpack download directory
+  file:
+    path: "{{ minecraft_home }}/modpack-staging"
+    state: directory
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0755"
+
+- name: Download NeoForge installer
+  get_url:
+    url: "https://maven.neoforged.net/releases/net/neoforged/neoforge/{{ modpack_loader_version }}/neoforge-{{ modpack_loader_version }}-installer.jar"
+    dest: "{{ minecraft_home }}/modpack-staging/neoforge-installer.jar"
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0644"
+  when: modpack_loader_version | length > 0
+
+- name: Run NeoForge installer
+  become_user: "{{ minecraft_user }}"
+  command: >
+    java -jar {{ minecraft_home }}/modpack-staging/neoforge-installer.jar
+    --installServer
+  args:
+    chdir: "{{ minecraft_home }}/server"
+    creates: "{{ minecraft_home }}/server/libraries"
+  when: modpack_loader_version | length > 0
+
+- name: Download modpack server files
+  get_url:
+    url: "{{ modpack_download_url }}"
+    dest: "{{ minecraft_home }}/modpack-staging/server-pack.zip"
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0644"
+  when: modpack_download_url | length > 0
+
+- name: Extract server pack
+  unarchive:
+    src: "{{ minecraft_home }}/modpack-staging/server-pack.zip"
+    dest: "{{ minecraft_home }}/server/"
+    remote_src: true
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+  when: modpack_download_url | length > 0
+
+- name: Record installed modpack version
+  copy:
+    dest: "{{ minecraft_home }}/server/.modpack-version"
+    content: |
+      modpack={{ modpack_name }}
+      loader={{ modpack_loader }}
+      minecraft_version={{ modpack_minecraft_version }}
+      loader_version={{ modpack_loader_version }}
+      installed_at={{ ansible_date_time.iso8601 }}
+    owner: "{{ minecraft_user }}"
+    group: "{{ minecraft_group }}"
+    mode: "0644"

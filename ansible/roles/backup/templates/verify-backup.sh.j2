@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# ═══════════════════════════════════════════════
+# Backup Verification Script
+# Runs weekly to ensure backups are healthy.
+#
+# Checks:
+# 1. restic check – verifies repo integrity
+# 2. Snapshot freshness – ensures recent backup exists
+# 3. Snapshot completeness – key files present
+# ═══════════════════════════════════════════════
+set -euo pipefail
+
+BACKUP_HOME="{{ minecraft_home }}/backups"
+source "${BACKUP_HOME}/.restic-env"
+
+MCRCON="{{ minecraft_home }}/tools/mcrcon"
+RCON_HOST="127.0.0.1"
+RCON_PORT="{{ rcon_port }}"
+RCON_PASS="{{ rcon_password }}"
+
+timestamp() { date '+%Y-%m-%d %H:%M:%S'; }
+log() { echo "[$(timestamp)] $*"; }
+rcon() { "${MCRCON}" -H "${RCON_HOST}" -P "${RCON_PORT}" -p "${RCON_PASS}" "$@" 2>/dev/null || true; }
+
+ERRORS=0
+STATUS="OK"
+
+log "═══ Starting backup verification ═══"
+
+# ── Check 1: Repository integrity ────────────
+log "Check 1: Repository integrity..."
+if restic check 2>&1; then
+    log "  ✓ Repository integrity OK"
+else
+    log "  ✗ Repository integrity FAILED"
+    ERRORS=$((ERRORS + 1))
+fi
+
+# ── Check 2: Snapshot freshness ──────────────
+log "Check 2: Snapshot freshness..."
+LATEST_SNAPSHOT=$(restic snapshots --json --latest 1 2>/dev/null | jq -r '.[0].time // empty')
+if [[ -z "${LATEST_SNAPSHOT}" ]]; then
+    log "  ✗ No snapshots found!"
+    ERRORS=$((ERRORS + 1))
+else
+    SNAPSHOT_EPOCH=$(date -d "${LATEST_SNAPSHOT}" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${LATEST_SNAPSHOT:0:19}" +%s 2>/dev/null || echo 0)
+    NOW_EPOCH=$(date +%s)
+    AGE_HOURS=$(( (NOW_EPOCH - SNAPSHOT_EPOCH) / 3600 ))
+
+    if [[ ${AGE_HOURS} -gt 24 ]]; then
+        log "  ✗ Latest snapshot is ${AGE_HOURS}h old (>24h threshold)"
+        ERRORS=$((ERRORS + 1))
+    else
+        log "  ✓ Latest snapshot is ${AGE_HOURS}h old"
+    fi
+fi
+
+# ── Check 3: Snapshot content ────────────────
+log "Check 3: Snapshot content check..."
+if [[ -n "${LATEST_SNAPSHOT}" ]]; then
+    FILE_COUNT=$(restic ls latest 2>/dev/null | wc -l)
+    if [[ ${FILE_COUNT} -lt 10 ]]; then
+        log "  ✗ Snapshot has only ${FILE_COUNT} files (suspiciously low)"
+        ERRORS=$((ERRORS + 1))
+    else
+        log "  ✓ Snapshot contains ${FILE_COUNT} files"
+    fi
+
+    # Check for critical files
+    CRITICAL_FILES=("world/level.dat" "server.properties")
+    for cf in "${CRITICAL_FILES[@]}"; do
+        if restic ls latest 2>/dev/null | grep -q "${cf}"; then
+            log "  ✓ Found ${cf}"
+        else
+            log "  ✗ Missing ${cf}"
+            ERRORS=$((ERRORS + 1))
+        fi
+    done
+fi
+
+# ── Check 4: Repository stats ───────────────
+log "Check 4: Repository stats..."
+SNAPSHOT_COUNT=$(restic snapshots --json 2>/dev/null | jq length)
+REPO_STATS=$(restic stats 2>/dev/null || echo "unavailable")
+log "  Snapshots: ${SNAPSHOT_COUNT}"
+log "  ${REPO_STATS}"
+
+# ── Report ───────────────────────────────────
+if [[ ${ERRORS} -gt 0 ]]; then
+    STATUS="FAILED"
+    log "═══ Verification FAILED (${ERRORS} errors) ═══"
+    rcon "say §c[Backup] Weekly verification FAILED! ${ERRORS} error(s) found."
+else
+    log "═══ Verification PASSED ═══"
+    rcon "say §a[Backup] Weekly verification passed. Backups are healthy."
+fi
+
+# Write status for monitoring
+cat > "${BACKUP_HOME}/.last-verify-status" <<EOF
+timestamp=$(timestamp)
+status=${STATUS}
+errors=${ERRORS}
+snapshot_count=${SNAPSHOT_COUNT}
+latest_snapshot=${LATEST_SNAPSHOT:-none}
+EOF
+
+exit ${ERRORS}

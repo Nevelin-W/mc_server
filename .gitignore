@@ -1,0 +1,30 @@
+# ── Terraform ────────────────────────────────
+terraform/terraform.tfvars
+terraform/.terraform/
+terraform/*.tfstate*
+terraform/tfplan
+terraform/.terraform.lock.hcl
+
+# ── Secrets ──────────────────────────────────
+*.pem
+*.key
+server_ip.txt
+
+# ── OS ───────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Editor ───────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ── Python ───────────────────────────────────
+__pycache__/
+*.pyc
+.venv/
+
+# ── Ansible ──────────────────────────────────
+ansible/inventory/hosts.ini
+ansible/*.retry

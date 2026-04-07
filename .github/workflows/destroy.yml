@@ -1,0 +1,93 @@
+# ══════════════════════════════════════════════
+# Destroy ALL Infrastructure (including volume)
+# ══════════════════════════════════════════════
+# This destroys EVERYTHING: VM, volume, world data.
+# Use Server Control → Stop to just park the server.
+# ══════════════════════════════════════════════
+name: "💣 Destroy Everything"
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type 'DESTROY-ALL' to confirm (this deletes world data!)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  TF_VAR_cloud_provider: ${{ vars.CLOUD_PROVIDER || 'vultr' }}
+  TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+  TF_VAR_domain_name: ${{ secrets.DOMAIN_NAME }}
+  TF_VAR_domain_subdomain: ${{ secrets.DOMAIN_SUBDOMAIN }}
+  TF_VAR_hcloud_token: ${{ secrets.HETZNER_API_TOKEN }}
+  TF_VAR_hetzner_dns_token: ${{ secrets.HETZNER_DNS_TOKEN }}
+  TF_VAR_vultr_api_key: ${{ secrets.VULTR_API_KEY }}
+
+jobs:
+  destroy:
+    name: Terraform Destroy
+    runs-on: ubuntu-latest
+    if: github.event.inputs.confirm == 'DESTROY-ALL'
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.7.x"
+
+      - name: Terraform Init
+        run: terraform init
+
+      # Take a final backup before destroying
+      - name: Final backup (best effort)
+        run: |
+          cd ..
+          if [[ -f server_ip.txt ]] && [[ -s server_ip.txt ]]; then
+            SERVER_IP=$(cat server_ip.txt)
+            mkdir -p ~/.ssh
+            echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/mc_server
+            chmod 600 ~/.ssh/mc_server
+            ssh-keyscan -H "${SERVER_IP}" >> ~/.ssh/known_hosts 2>/dev/null || true
+            ssh -i ~/.ssh/mc_server -o ConnectTimeout=10 root@${SERVER_IP} \
+              "sudo -u minecraft /opt/minecraft/backups/scripts/backup.sh" 2>/dev/null || true
+          fi
+
+      # Remove lifecycle prevent_destroy from all provider modules
+      - name: Remove volume protection for full destroy
+        run: |
+          find modules/ -name '*.tf' -exec sed -i 's/prevent_destroy = true/prevent_destroy = false/' {} +
+
+      - name: Terraform Destroy
+        run: |
+          terraform apply -auto-approve \
+            -var "server_enabled=false" \
+            -var 'admin_ips=["0.0.0.0/0"]'
+          terraform destroy -auto-approve \
+            -var 'admin_ips=["0.0.0.0/0"]'
+
+      - name: Clear server_ip.txt
+        working-directory: .
+        run: |
+          cd ..
+          echo "" > server_ip.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add server_ip.txt
+          git diff --cached --quiet || git commit -m "chore: all infrastructure destroyed"
+          git push || true
+
+      - name: Summary
+        run: |
+          echo "## 💣 All Infrastructure Destroyed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "VM, volume, and all server data have been deleted." >> "$GITHUB_STEP_SUMMARY"
+          echo "Backups in object storage are **still available** for restore." >> "$GITHUB_STEP_SUMMARY"
