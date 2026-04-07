@@ -37,19 +37,21 @@ terraform {
 }
 
 # ── Hetzner Cloud ────────────────────────────
+# Dummy token must be exactly 64 chars to pass hcloud provider validation
+# even when not actively used (provider still validates format on init).
 provider "hcloud" {
-  token = var.hcloud_token != "" ? var.hcloud_token : "unused"
+  token = var.hcloud_token != "" ? var.hcloud_token : "0000000000000000000000000000000000000000000000000000000000000000"
 }
 
 provider "hetznerdns" {
   apitoken = var.hetzner_dns_token != "" ? var.hetzner_dns_token : (
-    var.hcloud_token != "" ? var.hcloud_token : "unused"
+    var.hcloud_token != "" ? var.hcloud_token : "0000000000000000000000000000000000000000000000000000000000000000"
   )
 }
 
 # ── Vultr ────────────────────────────────────
 provider "vultr" {
-  api_key     = var.vultr_api_key != "" ? var.vultr_api_key : "unused"
+  api_key     = var.vultr_api_key != "" ? var.vultr_api_key : "0000000000000000000000000000000000000000"
   rate_limit  = 100
   retry_limit = 3
 }
