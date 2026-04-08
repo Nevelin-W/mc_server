@@ -4,7 +4,6 @@ package_upgrade: true
 
 packages:
   - fail2ban
-  - ufw
   - htop
   - wget
   - curl
@@ -12,7 +11,7 @@ packages:
   - jq
 
 runcmd:
-  - ufw allow OpenSSH
-  - ufw --force enable
+  # Disable UFW – cloud provider firewall handles port filtering
+  - ufw disable || true
   - systemctl enable fail2ban
   - systemctl start fail2ban
