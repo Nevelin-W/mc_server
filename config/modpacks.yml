@@ -32,7 +32,7 @@ modpacks:
     loader: forge
     minecraft_version: "1.20.1"
     loader_version: "47.2.0"
-    download_url: ""  # Set to the server pack URL from CurseForge
+    download_url: "https://www.curseforge.com/minecraft/modpacks/prominence-2-hasturian-era/download/7856383" 
     curseforge_project_id: "857242"
     java_version: "21"
     min_memory: "12G"
