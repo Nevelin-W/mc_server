@@ -28,6 +28,11 @@ on:
           - medium
           - large
           - xlarge
+      auto_deploy:
+        description: "Run deploy workflow after apply?"
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -110,7 +115,7 @@ jobs:
 
       # Auto-trigger deploy after provision
       - name: Trigger deploy workflow
-        if: github.event.inputs.action == 'apply'
+        if: github.event.inputs.action == 'apply' && github.event.inputs.auto_deploy == 'true'
         uses: actions/github-script@v8
         with:
           script: |
