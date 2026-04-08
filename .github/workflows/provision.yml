@@ -31,6 +31,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 env:
   TF_VAR_cloud_provider: ${{ vars.CLOUD_PROVIDER || 'vultr' }}
