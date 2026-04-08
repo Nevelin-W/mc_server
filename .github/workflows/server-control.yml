@@ -173,25 +173,26 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Setup SSH
+        id: ssh
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/mc_server
           chmod 600 ~/.ssh/mc_server
-          if [[ -f server_ip.txt ]]; then
+          if [[ -f server_ip.txt ]] && [[ -s server_ip.txt ]]; then
             SERVER_IP=$(cat server_ip.txt)
           else
             echo "No server_ip.txt found, VM may already be stopped."
             SERVER_IP=""
           fi
-          echo "SERVER_IP=${SERVER_IP}" >> "$GITHUB_ENV"
+          echo "ip=${SERVER_IP}" >> "$GITHUB_OUTPUT"
           if [[ -n "${SERVER_IP}" ]]; then
             ssh-keyscan -H "${SERVER_IP}" >> ~/.ssh/known_hosts 2>/dev/null || true
           fi
 
       - name: Graceful Minecraft stop + backup
-        if: env.SERVER_IP != ''
+        if: steps.ssh.outputs.ip != ''
         run: |
-          SSH="ssh -i ~/.ssh/mc_server -o ConnectTimeout=10 root@${SERVER_IP}"
+          SSH="ssh -i ~/.ssh/mc_server -o ConnectTimeout=10 root@${{ steps.ssh.outputs.ip }}"
 
           # Best-effort: RCON graceful shutdown + backup
           ${SSH} "
