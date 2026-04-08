@@ -120,6 +120,7 @@ jobs:
 
       - name: Generate inventory
         run: |
+          mkdir -p ansible/inventory
           cat > ansible/inventory/hosts.ini <<EOF
           [minecraft]
           ${{ steps.ip.outputs.ip }} ansible_user=root ansible_ssh_private_key_file=~/.ssh/mc_server
@@ -339,6 +340,7 @@ jobs:
 
       - name: Deploy with Ansible
         run: |
+          mkdir -p ansible/inventory
           cat > ansible/inventory/hosts.ini <<EOF
           [minecraft]
           ${{ steps.ip.outputs.ip }} ansible_user=root ansible_ssh_private_key_file=~/.ssh/mc_server
