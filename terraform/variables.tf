@@ -34,10 +34,22 @@ variable "project_name" {
   default     = "mc-server"
 }
 
-variable "server_plan" {
-  description = "Provider-specific server plan/type. Leave empty for smart default per provider."
+# ── Server Sizing ────────────────────────────
+variable "server_size" {
+  description = "Unified server size: small, medium, large, xlarge. Maps to provider-specific plans automatically."
   type        = string
-  default     = "" # Auto: ccx33 (hetzner), vhp-4c-12gb-amd (vultr), c6i.2xlarge (aws)
+  default     = "large"
+
+  validation {
+    condition     = contains(["small", "medium", "large", "xlarge"], var.server_size)
+    error_message = "server_size must be one of: small, medium, large, xlarge"
+  }
+}
+
+variable "server_plan" {
+  description = "Override with a provider-specific plan ID (e.g. vhp-4c-12gb-amd). Overrides server_size if set."
+  type        = string
+  default     = ""
 }
 
 variable "region" {

@@ -20,10 +20,15 @@ on:
           - restart
           - status
       server_size:
-        description: "Server plan override (leave empty for default)"
+        description: "Server size (only for start/restart)"
         required: false
-        default: ""
-        type: string
+        default: "large"
+        type: choice
+        options:
+          - small
+          - medium
+          - large
+          - xlarge
 
 permissions:
   contents: write
@@ -32,7 +37,7 @@ env:
   # ── Provider selection ──
   TF_VAR_cloud_provider: ${{ vars.CLOUD_PROVIDER || 'vultr' }}
   TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
-  TF_VAR_server_plan: ${{ github.event.inputs.server_size }}
+  TF_VAR_server_size: ${{ github.event.inputs.server_size || vars.SERVER_SIZE || 'large' }}
   TF_VAR_domain_name: ${{ secrets.DOMAIN_NAME }}
   TF_VAR_domain_subdomain: ${{ secrets.DOMAIN_SUBDOMAIN }}
   # ── Provider tokens (only active one is used) ──
@@ -145,7 +150,7 @@ jobs:
           echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| Server IP | \`${{ steps.ip.outputs.ip }}\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Connect Address | \`${{ steps.addr.outputs.address }}\` |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Server Plan | \`$(cd terraform && terraform output -raw server_plan)\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Server Size | \`$(cd terraform && terraform output -raw server_size)\` → \`$(cd terraform && terraform output -raw server_plan)\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Provider | \`$(cd terraform && terraform output -raw cloud_provider)\` |" >> "$GITHUB_STEP_SUMMARY"
           echo "| Time | $(date -u '+%Y-%m-%d %H:%M:%S UTC') |" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"

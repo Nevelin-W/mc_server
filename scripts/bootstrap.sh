@@ -87,8 +87,21 @@ elif [[ "${CLOUD_PROVIDER}" == "hetzner" ]]; then
     [[ -z "${HCLOUD_TOKEN}" ]] && error "Hetzner API token is required"
 fi
 
-read -p "Server plan (leave empty for default): " SERVER_PLAN
-SERVER_PLAN="${SERVER_PLAN:-}"
+echo ""
+info "Choose server size:"
+echo "  1) small  – 2 vCPU / 4GB   (vanilla / testing, ~\$12-24/mo)"
+echo "  2) medium – 4 vCPU / 8GB   (light modpacks, ~\$24-48/mo)"
+echo "  3) large  – 4-8 vCPU / 12-32GB (most modpacks, ~\$48-72/mo)"
+echo "  4) xlarge – 8+ vCPU / 16-64GB  (heavy modpacks, ~\$72-144/mo)"
+echo ""
+read -p "Size [3]: " SIZE_CHOICE
+case "${SIZE_CHOICE}" in
+    1|small)  SERVER_SIZE="small" ;;
+    2|medium) SERVER_SIZE="medium" ;;
+    4|xlarge) SERVER_SIZE="xlarge" ;;
+    *)        SERVER_SIZE="large" ;;
+esac
+log "Selected size: ${SERVER_SIZE}"
 
 read -p "Region (leave empty for default): " REGION
 REGION="${REGION:-}"
@@ -155,7 +168,7 @@ cat > "${PROJECT_DIR}/terraform/terraform.tfvars" <<EOF
 cloud_provider   = "${CLOUD_PROVIDER}"
 ssh_public_key   = "${SSH_PUBLIC_KEY}"
 project_name     = "mc-server"
-server_plan      = "${SERVER_PLAN}"
+server_size      = "${SERVER_SIZE}"
 region           = "${REGION}"
 volume_size_gb   = 50
 admin_ips        = ["${ADMIN_IP}"]

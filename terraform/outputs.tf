@@ -64,8 +64,13 @@ output "dns_nameservers" {
   value       = local.active.dns_nameservers
 }
 
+output "server_size" {
+  description = "Unified server size name"
+  value       = var.server_size
+}
+
 output "server_plan" {
-  description = "Resolved server plan for the active provider"
+  description = "Resolved provider-specific plan ID"
   value       = local.server_plan
 }
 

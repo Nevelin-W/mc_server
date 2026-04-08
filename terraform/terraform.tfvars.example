@@ -14,11 +14,13 @@ project_name   = "mc-server"
 server_enabled = true                 # false = destroy VM (stop), true = create VM (start)
 volume_size_gb = 50
 
-server_plan = ""                      # Leave empty for smart default per provider:
-                                      #   hetzner → ccx33 (8 dedicated vCPU, 32GB)
-                                      #   vultr   → vhp-4c-12gb-amd (4 vCPU, 12GB)
-                                      #   aws     → c6i.2xlarge (8 vCPU, 16GB)
-                                      #   oci     → VM.Standard.A1.Flex (4 OCPU, 24GB ARM)
+server_size = "large"                  # Unified size: small | medium | large | xlarge
+                                      #   small  – 2 vCPU / 4GB  (vanilla / testing)
+                                      #   medium – 4 vCPU / 8GB  (light modpacks)
+                                      #   large  – 4-8 vCPU / 12-32GB (most modpacks) ← default
+                                      #   xlarge – 8-16 vCPU / 16-64GB (heavy modpacks)
+
+# server_plan = ""                     # Advanced: override size with exact provider plan ID
 
 region = ""                           # Leave empty for closest-to-Riga default:
                                       #   hetzner → hel1 (Helsinki)

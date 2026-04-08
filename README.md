@@ -202,6 +202,7 @@ The restore script automatically:
 | Variable | Description |
 |----------|-------------|
 | `CLOUD_PROVIDER` | `vultr` or `hetzner` (default: `vultr`) |
+| `SERVER_SIZE` | `small`, `medium`, `large`, `xlarge` (default: `large`) — used by all Terraform workflows |
 
 **Repository Secrets** (Settings → Secrets → Actions):
 
@@ -308,25 +309,18 @@ The bootstrap script will prompt for these values. For GitHub Actions, add them 
 
 ## Server Sizing
 
-Leave `server_plan` empty to use the default for your provider. Override with a specific plan ID if needed.
+Use the unified `server_size` variable — it automatically maps to the right plan for your provider:
 
-### Vultr (High Performance AMD)
-| Plan | vCPU | RAM | Best For | Cost/mo |
-|------|------|-----|----------|---------|
-| `vc2-4c-8gb` | 4 shared | 8GB | Vanilla, testing | ~€24 |
-| `vhp-2c-4gb-amd` | 2 HP | 4GB | Vanilla, 1-5 players | ~€24 |
-| `vhp-4c-8gb-amd` | 4 HP | 8GB | Light modpacks, ≤10 players | ~€48 |
-| **`vhp-4c-12gb-amd`** | **4 HP** | **12GB** | **Most modpacks, ≤15 players (default)** | **~€64** |
-| `vhp-8c-16gb-amd` | 8 HP | 16GB | Heavy modpacks, ≤20 players | ~€96 |
+| Size | Use Case | Vultr | Hetzner | Approx Cost |
+|------|----------|-------|---------|-------------|
+| `small` | Vanilla / testing (2 vCPU, 4GB) | `vc2-2c-4gb` | `cx32` | ~€8–24/mo |
+| `medium` | Light modpacks, ≤10 players (4 vCPU, 8GB) | `vhp-2c-4gb-amd` | `ccx23` | ~€22–48/mo |
+| **`large`** | **Most modpacks, ≤15 players (4-8 vCPU, 12-32GB) — default** | **`vhp-4c-12gb-amd`** | **`ccx33`** | **~€45–64/mo** |
+| `xlarge` | Heavy modpacks, 20+ players (8-16 vCPU, 16-64GB) | `vhp-8c-16gb-amd` | `ccx43` | ~€90–96/mo |
 
-### Hetzner Cloud (Dedicated CPU)
-| Plan | vCPU | RAM | Best For | Cost/mo |
-|------|------|-----|----------|---------|
-| cx22 | 2 shared | 4GB | Testing only | ~€4 |
-| cx32 | 4 shared | 8GB | Vanilla, 1-3 players | ~€8 |
-| ccx23 | 4 dedicated | 16GB | Light modpacks, ≤10 players | ~€22 |
-| **ccx33** | **8 dedicated** | **32GB** | **Heavy modpacks, ≤20 players (default)** | **~€45** |
-| ccx43 | 16 dedicated | 64GB | ATM9/large packs, 20+ players | ~€90 |
+Set it in `terraform.tfvars`, the bootstrap wizard, or the GitHub Actions workflow dropdown.
+
+> **Advanced:** To use an exact provider plan ID, set `server_plan` — it overrides `server_size`.
 
 ## Project Structure
 
