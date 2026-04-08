@@ -2,12 +2,12 @@
 resource "hcloud_firewall" "minecraft" {
   name = "${var.project_name}-fw"
 
-  # SSH
+  # SSH (key-only auth enforced on the server)
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "22"
-    source_ips = var.admin_ips
+    source_ips = ["0.0.0.0/0", "::/0"]
   }
 
   # Minecraft (TCP)

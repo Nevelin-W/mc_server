@@ -3,17 +3,25 @@ resource "vultr_firewall_group" "minecraft" {
   description = "${var.project_name} firewall"
 }
 
-# SSH – restricted to admin IPs
+# SSH – open (key-only auth enforced on the server)
 resource "vultr_firewall_rule" "ssh" {
-  count = length(var.admin_ips)
-
   firewall_group_id = vultr_firewall_group.minecraft.id
   protocol          = "tcp"
   ip_type           = "v4"
-  subnet            = cidrhost(var.admin_ips[count.index], 0)
-  subnet_size       = tonumber(split("/", var.admin_ips[count.index])[1])
+  subnet            = "0.0.0.0"
+  subnet_size       = 0
   port              = "22"
-  notes             = "SSH from admin"
+  notes             = "SSH (key-only auth)"
+}
+
+resource "vultr_firewall_rule" "ssh_v6" {
+  firewall_group_id = vultr_firewall_group.minecraft.id
+  protocol          = "tcp"
+  ip_type           = "v6"
+  subnet            = "::"
+  subnet_size       = 0
+  port              = "22"
+  notes             = "SSH IPv6 (key-only auth)"
 }
 
 # Minecraft TCP – open to all
