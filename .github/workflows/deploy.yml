@@ -71,6 +71,17 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/mc_server
           chmod 600 ~/.ssh/mc_server
+
+      - name: Wait for server to be reachable
+        run: |
+          for i in $(seq 1 30); do
+            if ssh -i ~/.ssh/mc_server -o ConnectTimeout=5 -o StrictHostKeyChecking=no root@${{ steps.ip.outputs.ip }} "echo ok" 2>/dev/null; then
+              echo "Server reachable."
+              break
+            fi
+            echo "Waiting for SSH... ($i/30)"
+            sleep 10
+          done
           ssh-keyscan -H ${{ steps.ip.outputs.ip }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
       - name: Generate Ansible inventory
