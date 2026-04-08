@@ -8,7 +8,6 @@ terraform/.terraform.lock.hcl
 # ── Secrets ──────────────────────────────────
 *.pem
 *.key
-server_ip.txt
 
 # ── OS ───────────────────────────────────────
 .DS_Store
